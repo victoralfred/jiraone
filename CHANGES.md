@@ -1,5 +1,10 @@
 # Jira one change log
 
+**Release 0.9.3** - 2025-10-15
+Update:
+- An update to API in `jira.management` module
+
+
 **Release 0.9.2** - 2025-08-17
 Fixes::
 - 🐛An issue with enhance_search returning duplicated results
