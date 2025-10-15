@@ -567,7 +567,8 @@ class UserManagement:
             else data.json()["meta"]["page_size"]
         )
         count = 0
-        for ids in data.json()["data"]:
+        resp_object = data.json().get("data", [])
+        for ids in resp_object:
             many.append(ids["id"]) if "id" in ids and total == -1 else 0
             while count < total:
                 count += 1
