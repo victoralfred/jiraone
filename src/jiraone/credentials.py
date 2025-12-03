@@ -4,14 +4,32 @@
 
 This module provides classes for handling authentication to Jira instances,
 supporting both basic authentication and OAuth 2.0 3LO.
+
+Example::
+
+    from jiraone.credentials import LOGIN
+
+    # Basic usage
+    LOGIN(
+        user="email@example.com",
+        password="api-token",
+        url="https://example.atlassian.net"
+    )
+
+    # Using context manager (recommended for proper resource cleanup)
+    with LOGIN.session_context() as session:
+        response = session.get(url)
 """
 import json
 import random
 import string
-from typing import Any, Optional
+from contextlib import contextmanager
+from typing import Any, Generator, Optional
 
 import requests
+from requests.adapters import HTTPAdapter
 from requests.auth import HTTPBasicAuth
+from urllib3.util.retry import Retry
 
 from jiraone.exceptions import JiraOneErrors
 from jiraone.jira_logs import add_log
@@ -490,6 +508,111 @@ class Credentials:
             *args, auth=self.auth_request, headers=self.headers, **kwargs
         )
         return response
+
+    @contextmanager
+    def session_context(
+        self,
+        pool_connections: int = 10,
+        pool_maxsize: int = 10,
+        max_retries: int = 3,
+    ) -> Generator[requests.Session, None, None]:
+        """Create a session context manager for efficient connection pooling.
+
+        This context manager creates a new requests.Session with connection
+        pooling configured, which is more efficient for making multiple
+        HTTP requests. The session is automatically closed when exiting
+        the context.
+
+        Example::
+
+            from jiraone import LOGIN
+
+            LOGIN(user="email@example.com", password="api-token",
+                  url="https://example.atlassian.net")
+
+            with LOGIN.session_context() as session:
+                # Make multiple requests using the pooled session
+                response1 = session.get(endpoint.myself())
+                response2 = session.get(endpoint.get_projects())
+
+        :param pool_connections: Number of connection pools to cache
+        :param pool_maxsize: Maximum connections per pool
+        :param max_retries: Maximum retry attempts for failed connections
+
+        :yields: A configured requests.Session with connection pooling
+        """
+        session = requests.Session()
+
+        # Configure retry strategy
+        retry_strategy = Retry(
+            total=max_retries,
+            backoff_factor=0.3,
+            status_forcelist=(500, 502, 503, 504),
+            allowed_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
+        )
+
+        # Create adapter with connection pooling
+        adapter = HTTPAdapter(
+            pool_connections=pool_connections,
+            pool_maxsize=pool_maxsize,
+            max_retries=retry_strategy,
+        )
+
+        # Mount adapter for both HTTP and HTTPS
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
+
+        # Apply authentication
+        if self.auth_request:
+            session.auth = self.auth_request
+        if self.headers:
+            session.headers.update(self.headers)
+
+        try:
+            yield session
+        finally:
+            session.close()
+            add_log("Session context closed", "debug")
+
+    def close(self) -> None:
+        """Close the underlying session and release resources.
+
+        This method should be called when you're done making requests
+        to properly release connection resources. If using the
+        context manager (session_context), this is handled automatically.
+
+        Example::
+
+            from jiraone import LOGIN
+
+            LOGIN(user="email@example.com", password="api-token",
+                  url="https://example.atlassian.net")
+
+            # Make requests...
+            response = LOGIN.get(endpoint.myself())
+
+            # Clean up when done
+            LOGIN.close()
+        """
+        if hasattr(self, 'session') and self.session:
+            self.session.close()
+            add_log("Credentials session closed", "debug")
+
+    def __enter__(self) -> "Credentials":
+        """Enter context manager.
+
+        Example::
+
+            from jiraone import LOGIN
+
+            with LOGIN:
+                response = LOGIN.get(endpoint.myself())
+        """
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Exit context manager and close session."""
+        self.close()
 
     @staticmethod
     def from_jira(obj: Any) -> Any:
