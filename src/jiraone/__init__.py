@@ -76,6 +76,19 @@ from jiraone.validation import (
     validate_jql,
     safe_format_url,
 )
+from jiraone.client import (
+    JiraClient,
+    ClientConfig,
+    create_pooled_session,
+)
+from jiraone.streaming import (
+    StreamConfig,
+    StreamingDownloader,
+    StreamingUploader,
+    ChunkedExporter,
+    streaming_download,
+    stream_json_array,
+)
 
 __author__ = "Prince Nyeche"
 __version__ = "0.9.3"
@@ -131,4 +144,15 @@ __all__ = [
     "validate_account_id",
     "validate_jql",
     "safe_format_url",
+    # Client
+    "JiraClient",
+    "ClientConfig",
+    "create_pooled_session",
+    # Streaming
+    "StreamConfig",
+    "StreamingDownloader",
+    "StreamingUploader",
+    "ChunkedExporter",
+    "streaming_download",
+    "stream_json_array",
 ]
