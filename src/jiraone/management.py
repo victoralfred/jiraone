@@ -11,6 +11,8 @@ import typing as t
 import threading
 import re
 import sys
+from typing import Any, Dict, List, Optional, Union
+
 import requests
 from collections import deque
 from jiraone.exceptions import JiraOneErrors
@@ -49,7 +51,9 @@ class UserManagement:
         self._event_id_ = None
         self._obj_resp_ = None
 
-    def get_user_permission(self, account_id: str, query: list = None) -> t.Any:
+    def get_user_permission(
+        self, account_id: str, query: Optional[List[str]] = None
+    ) -> Any:
         """Returns the set of permissions you have for managing the
         specified Atlassian account.
 
@@ -151,8 +155,8 @@ class UserManagement:
             )
 
     def api_token(
-        self, account_id: str, method: str = "GET", token_id: str = None
-    ) -> t.Any:
+        self, account_id: str, method: str = "GET", token_id: Optional[str] = None
+    ) -> Any:
         """Gets the API tokens owned by the specified user
         or Deletes a specified API token by ID.
 
@@ -704,7 +708,9 @@ class UserManagement:
         return user_collection
 
     @staticmethod
-    def find_user(query: str, source: t.List = None) -> t.Union[t.Dict, t.List]:
+    def find_user(
+        query: str, source: Optional[List[Any]] = None
+    ) -> Optional[Union[Dict[str, Any], List[Any]]]:
         """Finds a specific user.
 
         :param query: A search term, could be an email,

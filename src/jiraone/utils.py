@@ -8,6 +8,8 @@ import typing as t
 import threading
 import re
 from datetime import datetime as dt, timedelta, timezone
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
+
 from jiraone import add_log
 from jiraone.exceptions import JiraOneErrors
 
@@ -100,12 +102,12 @@ class DotNotation(dict):
 
 
 def process_executor(
-    func: t.Callable,
+    func: Callable[..., Any],
     *,
-    data: t.Iterable = None,
+    data: Optional[Iterable[Any]] = None,
     workers: int = 4,
-    timeout: t.Union[float, int] = 2.5,
-    **kwargs,
+    timeout: Union[float, int] = 2.5,
+    **kwargs: Any,
 ) -> None:
     """
     A process executor function. This function allows you to run asynchronous
@@ -171,9 +173,12 @@ class DateFormat:
 
 
 def convert_to_local_time(
-    tzinfo: str = None, ahead: int = 0, use_format: str = None,
-        sep: str = "T", curr_time: bool = True
-) -> t.Union[tuple, str]:
+    tzinfo: Optional[str] = None,
+    ahead: int = 0,
+    use_format: Optional[str] = None,
+    sep: str = "T",
+    curr_time: bool = True,
+) -> Union[Tuple[str, str, str], str]:
     """Converts from any time to user time given data extracted from
     user timezone
 
@@ -214,14 +219,14 @@ def convert_to_local_time(
     :return: tuple of date, time, and datetime all in strings
     """
 
-    def parse_timezone(_tzinfo_: str = None) -> str:
+    def parse_timezone(_tzinfo_: Optional[str] = None) -> str:
         """Process a timezone info"""
         value = _tzinfo_.split("GMT")[1].split("(")[0].strip(" ")
         pattern = re.compile(r"(.\d{3})")
         get_num = pattern.search(value)
         return get_num.string
 
-    def actual_time(gmt: str = None):
+    def actual_time(gmt: Optional[str] = None) -> dt:
         """Send an actual timezone then get the hour or minute"""
         new_time = list(gmt)
         sign, *hour_or_min, _ = new_time
@@ -278,7 +283,9 @@ def convert_to_local_time(
 
 
 def validate_on_error(
-    name_field: t.Any = None, data_type: tuple = None, err_message: str = None
+    name_field: Any = None,
+    data_type: Optional[Tuple[Any, str, str]] = None,
+    err_message: Optional[str] = None,
 ) -> None:
     """
     Validate an argument and prepares an error response
@@ -335,8 +342,9 @@ def validate_on_error(
 
 
 def validate_argument_name(
-    name_field: str, valid_args: t.Union[dict, list] = None
-):
+    name_field: str,
+    valid_args: Optional[Union[Dict[str, Any], List[str]]] = None,
+) -> None:
     """
     Validates the key word argument name of the argument
 
@@ -363,7 +371,7 @@ def check_is_type(obj_type: str) -> str:
         return ""
     return obj_type
 
-def get_datetime_utcnow() -> t.Any:
+def get_datetime_utcnow() -> dt:
     """Return an aware datetime object
     of the current time
 
@@ -381,7 +389,7 @@ def get_datetime_utcnow() -> t.Any:
     return get_date
 
 
-def from_datetime_utcnow(from_date: str, _format: str = None) -> t.Any:
+def from_datetime_utcnow(from_date: str, _format: Optional[str] = None) -> dt:
     """Return an aware datetime object
     from a string value by adding a timezone info
 
@@ -412,7 +420,7 @@ def from_datetime_utcnow(from_date: str, _format: str = None) -> t.Any:
     return get_date
 
 
-def create_urls(**kwargs: t.Any) -> str:
+def create_urls(**kwargs: Any) -> str:
     """
     Dynamically generate a URL pattern based on user supplied arguments.
     It follows the same argument structure as ``endpoint.search_cloud_issues``.
@@ -507,10 +515,10 @@ def create_urls(**kwargs: t.Any) -> str:
 
 
 def enhance_search(
-        defined_url: str,
-        method: str = "GET",
-        limit: int = None,
-) -> dict:
+    defined_url: str,
+    method: str = "GET",
+    limit: Optional[int] = None,
+) -> Dict[str, Any]:
     """Performs a search of issues keeping the payload mechanism looking like
     the old API for search, while retaining the new features of search in Cloud.
     It performs the search for the next-page automatically and returns all issues
