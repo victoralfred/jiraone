@@ -13,8 +13,16 @@ Features:
     * Send and download attachments
     * Get time in status of issues
     * Download stats of users in a project and their roles
+    * Connection pooling for better performance
+    * Automatic retry with exponential backoff
+    * Input validation and URL sanitization
+    * Streaming downloads for large files
+    * Pagination iterators for memory efficiency
 
-Example::
+Quick Start
+-----------
+
+Basic authentication::
 
     from jiraone import LOGIN, endpoint
 
@@ -26,6 +34,49 @@ Example::
 
     response = LOGIN.get(endpoint.myself())
     print(response.json())
+
+Using connection pooling for better performance::
+
+    from jiraone import JiraClient, ClientConfig
+
+    config = ClientConfig(pool_connections=20, timeout=60)
+    with JiraClient(
+        base_url="https://your-instance.atlassian.net",
+        user="email@example.com",
+        token="api-token",
+        config=config
+    ) as client:
+        response = client.get("/rest/api/3/myself")
+        print(response.json())
+
+Handling rate limits with retry::
+
+    from jiraone import LOGIN, endpoint, with_retry
+
+    @with_retry(max_attempts=5, base_delay=2.0)
+    def get_all_projects():
+        return LOGIN.get(endpoint.get_projects())
+
+Iterating over paginated results::
+
+    from jiraone import LOGIN, endpoint, PaginatedAPI
+
+    for project in PaginatedAPI(
+        client=LOGIN,
+        endpoint_func=endpoint.get_projects,
+        results_key="values"
+    ):
+        print(f"{project['key']}: {project['name']}")
+
+Streaming large file downloads::
+
+    from jiraone import StreamingDownloader
+
+    downloader = StreamingDownloader(
+        url="https://example.atlassian.net/attachment/12345",
+        auth=("email@example.com", "api-token"),
+    )
+    downloader.download_to_file("attachment.pdf")
 
 """
 from jiraone.access import LOGIN, endpoint, echo, For, field
