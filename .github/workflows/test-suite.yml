@@ -1,0 +1,410 @@
+# Comprehensive test suite workflow for jiraone
+# Runs extensive unit tests, integration tests, and generates coverage reports
+
+name: Test Suite
+
+on:
+  push:
+    branches: ["main", "develop", "feature/*", "improvement/*"]
+  pull_request:
+    branches: ["main", "develop"]
+  workflow_dispatch:  # Allow manual trigger
+  schedule:
+    # Run weekly on Sundays at midnight UTC
+    - cron: '0 0 * * 0'
+
+env:
+  PYTHONUNBUFFERED: "1"
+  FORCE_COLOR: "1"
+
+jobs:
+  # =============================================================================
+  # Unit Tests - Fast feedback on all Python versions
+  # =============================================================================
+  unit-tests:
+    name: Unit Tests (Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        include:
+          # Also test on Windows and macOS with latest Python
+          - os: windows-latest
+            python-version: "3.12"
+          - os: macos-latest
+            python-version: "3.12"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -e ".[dev]"
+
+      - name: Run unit tests
+        run: |
+          PYTHONPATH=src pytest tests/ \
+            --ignore=tests/test_integration.py \
+            -v \
+            --tb=short \
+            --durations=10 \
+            -x  # Stop on first failure for faster feedback
+        shell: bash
+
+  # =============================================================================
+  # Integration Tests - Test with mocked HTTP responses
+  # =============================================================================
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: unit-tests  # Only run if unit tests pass
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pip install responses httpretty
+
+      - name: Run integration tests
+        run: |
+          PYTHONPATH=src pytest tests/test_integration.py \
+            -v \
+            --tb=long \
+            --durations=20
+
+      - name: Run all tests with integration
+        run: |
+          PYTHONPATH=src pytest tests/ \
+            -v \
+            --tb=short \
+            --durations=10
+
+  # =============================================================================
+  # Coverage Report - Detailed coverage analysis
+  # =============================================================================
+  coverage:
+    name: Coverage Report
+    runs-on: ubuntu-latest
+    needs: unit-tests
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pip install coverage[toml] pytest-cov
+
+      - name: Run tests with coverage
+        run: |
+          PYTHONPATH=src pytest tests/ \
+            --cov=jiraone \
+            --cov-report=xml:coverage.xml \
+            --cov-report=html:htmlcov \
+            --cov-report=term-missing \
+            --cov-branch \
+            --cov-fail-under=15
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+          flags: unittests
+          name: jiraone-coverage
+          fail_ci_if_error: false
+          verbose: true
+
+      - name: Upload HTML coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: htmlcov/
+          retention-days: 30
+
+      - name: Coverage summary
+        run: |
+          echo "## Coverage Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          python -c "
+          import xml.etree.ElementTree as ET
+          tree = ET.parse('coverage.xml')
+          root = tree.getroot()
+          rate = float(root.attrib.get('line-rate', 0)) * 100
+          lines = root.attrib.get('lines-valid', 'N/A')
+          covered = root.attrib.get('lines-covered', 'N/A')
+          print(f'| Metric | Value |')
+          print(f'|--------|-------|')
+          print(f'| Coverage | {rate:.1f}% |')
+          print(f'| Lines Covered | {covered} |')
+          print(f'| Total Lines | {lines} |')
+          " >> $GITHUB_STEP_SUMMARY
+
+  # =============================================================================
+  # Type Checking - Static type analysis with mypy
+  # =============================================================================
+  type-check:
+    name: Type Checking
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pip install mypy types-requests
+
+      - name: Run mypy on new modules
+        run: |
+          mypy src/jiraone/client.py \
+               src/jiraone/retry.py \
+               src/jiraone/pagination.py \
+               src/jiraone/streaming.py \
+               src/jiraone/validation.py \
+               src/jiraone/exceptions.py \
+               src/jiraone/endpoints.py \
+               src/jiraone/fields.py \
+               src/jiraone/file_io.py \
+               src/jiraone/users.py \
+               --ignore-missing-imports \
+               --warn-return-any \
+               --warn-unused-configs \
+               --show-error-codes \
+               --pretty
+
+      - name: Type check summary
+        if: always()
+        run: |
+          echo "## Type Check Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Checked modules:" >> $GITHUB_STEP_SUMMARY
+          echo "- client.py, retry.py, pagination.py" >> $GITHUB_STEP_SUMMARY
+          echo "- streaming.py, validation.py, exceptions.py" >> $GITHUB_STEP_SUMMARY
+          echo "- endpoints.py, fields.py, file_io.py, users.py" >> $GITHUB_STEP_SUMMARY
+
+  # =============================================================================
+  # Linting - Code quality checks
+  # =============================================================================
+  lint:
+    name: Linting
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: 'pip'
+
+      - name: Install linters
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 black isort
+
+      - name: Check formatting with Black
+        run: |
+          black --check --diff src/jiraone/*.py tests/*.py || true
+
+      - name: Check import sorting with isort
+        run: |
+          isort --check-only --diff src/jiraone/*.py tests/*.py || true
+
+      - name: Lint with flake8
+        run: |
+          # Stop on syntax errors or undefined names
+          flake8 src/jiraone tests \
+            --count \
+            --select=E9,F63,F7,F82 \
+            --show-source \
+            --statistics
+
+          # Warnings (non-blocking)
+          flake8 src/jiraone tests \
+            --count \
+            --exit-zero \
+            --max-complexity=15 \
+            --max-line-length=100 \
+            --statistics
+
+  # =============================================================================
+  # Security Scan - Check for vulnerabilities
+  # =============================================================================
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: 'pip'
+
+      - name: Install security tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install bandit safety pip-audit
+
+      - name: Run Bandit security linter
+        run: |
+          bandit -r src/jiraone -ll -ii --skip B101 || true
+
+      - name: Check dependencies with pip-audit
+        run: |
+          pip install -e .
+          pip-audit || true
+
+  # =============================================================================
+  # Performance Tests - Benchmark critical paths
+  # =============================================================================
+  performance:
+    name: Performance Tests
+    runs-on: ubuntu-latest
+    needs: unit-tests
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pip install pytest-benchmark
+
+      - name: Run performance tests
+        run: |
+          PYTHONPATH=src pytest tests/ \
+            -v \
+            --durations=0 \
+            --durations-min=0.1 \
+            2>&1 | tee performance.log
+
+      - name: Performance summary
+        run: |
+          echo "## Performance Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Slowest tests:" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          grep -A 20 "slowest durations" performance.log >> $GITHUB_STEP_SUMMARY || echo "No slow tests found" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+  # =============================================================================
+  # Documentation Check - Verify docstrings and documentation
+  # =============================================================================
+  docs-check:
+    name: Documentation Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: 'pip'
+
+      - name: Install documentation tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install pydocstyle interrogate
+
+      - name: Check docstring coverage
+        run: |
+          interrogate src/jiraone \
+            --ignore-init-method \
+            --ignore-init-module \
+            --ignore-magic \
+            --ignore-semiprivate \
+            --ignore-private \
+            --fail-under=50 \
+            -vv || true
+
+      - name: Docstring summary
+        run: |
+          echo "## Docstring Coverage" >> $GITHUB_STEP_SUMMARY
+          interrogate src/jiraone \
+            --ignore-init-method \
+            --ignore-init-module \
+            --ignore-magic \
+            --generate-badge docs-badge.svg || true
+
+  # =============================================================================
+  # Final Status - Aggregate all job results
+  # =============================================================================
+  status:
+    name: Test Suite Status
+    runs-on: ubuntu-latest
+    needs: [unit-tests, integration-tests, coverage, type-check, lint]
+    if: always()
+
+    steps:
+      - name: Check all jobs
+        run: |
+          echo "## Test Suite Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Unit Tests | ${{ needs.unit-tests.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Integration Tests | ${{ needs.integration-tests.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Coverage | ${{ needs.coverage.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Type Check | ${{ needs.type-check.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Lint | ${{ needs.lint.result }} |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Fail if any required job failed
+        if: |
+          needs.unit-tests.result == 'failure' ||
+          needs.integration-tests.result == 'failure' ||
+          needs.coverage.result == 'failure'
+        run: exit 1
