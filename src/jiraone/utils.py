@@ -172,6 +172,67 @@ class DateFormat:
     WD_MMM_dd_YYYY_HH_MM_SS_GMT_TZU = "%a %b %d %Y %H:%M:%S GMT{z} (TIME)"
 
 
+def _parse_timezone(tzinfo_str: str) -> str:
+    """Parse timezone offset from a timezone info string.
+
+    Extracts the GMT offset portion from a string like
+    "Wed Oct 18 2023 18:17:15 GMT+0300 (LOCALTIME)".
+
+    :param tzinfo_str: A timezone info string containing GMT offset
+    :return: The GMT offset string (e.g., "+0300")
+    """
+    value = tzinfo_str.split("GMT")[1].split("(")[0].strip(" ")
+    pattern = re.compile(r"(.\d{3})")
+    get_num = pattern.search(value)
+    return get_num.string if get_num else ""
+
+
+def _calculate_time_with_offset(
+    gmt_offset: str,
+    tzinfo_str: str,
+    use_current_time: bool = True,
+) -> dt:
+    """Calculate datetime with timezone offset applied.
+
+    :param gmt_offset: GMT offset string (e.g., "+0300", "-0500")
+    :param tzinfo_str: Full timezone info string for extracting time
+    :param use_current_time: Whether to use current UTC time or parse from tzinfo
+    :return: Datetime with offset applied
+    """
+    new_time = list(gmt_offset)
+    sign, *hour_or_min, _ = new_time
+    hour_hand = (
+        int(hour_or_min[1])
+        if int(hour_or_min[0]) == 0
+        else int(f"{hour_or_min[0]}{hour_or_min[1]}")
+    )
+    get_time_info = tzinfo_str.split("GMT")[0].rstrip(" ")
+    current_time = (
+        dt.now(timezone.utc)
+        if use_current_time
+        else from_datetime_utcnow(get_time_info, "%a %b %d %Y %H:%M:%S")
+    )
+
+    # Check if there are minutes in the offset (e.g., +0530 for India)
+    if int(hour_or_min[2]) != 0:
+        min_hand = 30
+        if sign == "-":
+            new_zone = timedelta(hours=-hour_hand, minutes=min_hand)
+            final_time = current_time - (-new_zone)
+        else:
+            final_time = current_time + timedelta(
+                hours=hour_hand, minutes=min_hand
+            )
+    else:
+        if sign == "-":
+            new_zone = timedelta(hours=-hour_hand)
+            final_time = current_time - (-new_zone)
+        else:
+            final_time = current_time + timedelta(hours=hour_hand)
+
+    return final_time
+
+
 def convert_to_local_time(
     tzinfo: Optional[str] = None,
     ahead: int = 0,
@@ -218,48 +279,8 @@ def convert_to_local_time(
 
     :return: tuple of date, time, and datetime all in strings
     """
-
-    def parse_timezone(_tzinfo_: Optional[str] = None) -> str:
-        """Process a timezone info"""
-        value = _tzinfo_.split("GMT")[1].split("(")[0].strip(" ")
-        pattern = re.compile(r"(.\d{3})")
-        get_num = pattern.search(value)
-        return get_num.string
-
-    def actual_time(gmt: Optional[str] = None) -> dt:
-        """Send an actual timezone then get the hour or minute"""
-        new_time = list(gmt)
-        sign, *hour_or_min, _ = new_time
-        hour_hand = (
-            int(hour_or_min[1])
-            if int(hour_or_min[0]) == 0
-            else int(f"{hour_or_min[0]}{hour_or_min[1]}")
-        )
-        get_time_info = tzinfo.split("GMT")[0].rstrip(" ")
-        current_time = (dt.now(timezone.utc)  # noqa
-                        if curr_time is True
-                        else from_datetime_utcnow(
-            get_time_info, "%a %b %d %Y %H:%M:%S"))
-        if int(hour_or_min[2]) != 0:
-            min_hand = 30
-            if sign == "-":
-                new_zone = timedelta(hours=-hour_hand, minutes=min_hand)
-                final_time = current_time - (-new_zone)
-            else:
-                final_time = current_time + timedelta(
-                    hours=hour_hand, minutes=min_hand
-                )
-        else:
-            if sign == "-":
-                new_zone = timedelta(hours=-hour_hand)
-                final_time = current_time - (-new_zone)
-            else:
-                final_time = current_time + timedelta(hours=hour_hand)
-
-        return final_time
-
-    current_zone = parse_timezone(tzinfo)  # noqa
-    make_time = actual_time(current_zone)
+    current_zone = _parse_timezone(tzinfo)
+    make_time = _calculate_time_with_offset(current_zone, tzinfo, curr_time)
     future_time = make_time + timedelta(days=ahead)
     datetime_string = (
         make_time.strftime(
@@ -514,6 +535,26 @@ def create_urls(**kwargs: Any) -> str:
                             "Invalid `method` argument value provided")
 
 
+def _accumulate_issues(
+    response_obj: Dict[str, Any],
+    data_obj: Dict[str, Any],
+) -> None:
+    """Accumulate issues from a response into the data object.
+
+    This helper function extracts issues from an API response and appends
+    them to the accumulator dictionary.
+
+    :param response_obj: The JSON response object from the API
+    :param data_obj: The accumulator dictionary to store issues
+    """
+    if "issues" in response_obj:
+        issues = response_obj["issues"]
+        if "issues" not in data_obj:
+            data_obj["issues"] = issues
+        else:
+            data_obj["issues"] = data_obj["issues"] + issues
+
+
 def enhance_search(
     defined_url: str,
     method: str = "GET",
@@ -641,18 +682,7 @@ def enhance_search(
         )
         if resp.status_code < 300:
             resp_obj = resp.json()
-            def get_issues() -> None:
-                """
-                process the issue response
-                """
-                if "issues" in resp_obj:
-                    issues = resp_obj["issues"]
-                    if "issues" not in data_obj:
-                        data_obj["issues"] = issues
-                    elif "issues" in data_obj:
-                        data_obj["issues"] = data_obj["issues"] + issues
-
-            get_issues()
+            _accumulate_issues(resp_obj, data_obj)
             while "nextPageToken" in resp_obj:
                 next_token, token = resp_obj["nextPageToken"], None
                 if "nextPageToken=" in defined_url:
@@ -683,7 +713,7 @@ def enhance_search(
                         )
                 if resp.status_code < 300:
                     resp_obj = resp.json()
-                    get_issues()
+                    _accumulate_issues(resp_obj, data_obj)
         else:
             raise JiraOneErrors(
                 "error","Failed to get issue data - {}".format(
