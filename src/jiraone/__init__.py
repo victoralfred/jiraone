@@ -152,6 +152,17 @@ from jiraone.fields import (
     is_custom_field_id,
     extract_custom_field_number,
 )
+from jiraone.users import (
+    User,
+    UserSearchResult,
+    UserManager,
+)
+from jiraone.file_io import (
+    path_builder as build_path,
+    file_writer as write_file,
+    file_reader as read_file,
+    replacement_placeholder as replace_placeholder,
+)
 
 __author__ = "Prince Nyeche"
 __version__ = "0.9.3"
@@ -228,4 +239,13 @@ __all__ = [
     "get_search_key",
     "is_custom_field_id",
     "extract_custom_field_number",
+    # Users (new API)
+    "User",
+    "UserSearchResult",
+    "UserManager",
+    # File I/O (new API)
+    "build_path",
+    "write_file",
+    "read_file",
+    "replace_placeholder",
 ]
