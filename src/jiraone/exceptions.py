@@ -34,8 +34,8 @@ class JiraOneErrors(Exception):
 
     def __init__(
         self,
-        errors: str = None,
-        messages: str = None,
+        errors: Optional[str] = None,
+        messages: Optional[str] = None,
         *args: Any,
         **kwargs: Any
     ) -> None:
@@ -174,7 +174,7 @@ class JiraAPIError(JiraOneErrors):
         super().__init__("wrong", message)
 
     @classmethod
-    def from_response(cls, response: Any, message: str = None) -> "JiraAPIError":
+    def from_response(cls, response: Any, message: Optional[str] = None) -> "JiraAPIError":
         """Create an exception from a requests Response object.
 
         :param response: requests.Response object
@@ -535,7 +535,7 @@ class JiraTimeoutError(JiraAPIError):
 
 
 # Convenience function for raising API errors from responses
-def raise_for_status(response: Any, message: str = None) -> None:
+def raise_for_status(response: Any, message: Optional[str] = None) -> None:
     """Raise an appropriate exception for HTTP error responses.
 
     :param response: requests.Response object

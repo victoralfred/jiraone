@@ -117,7 +117,7 @@ def validate_url(
         elif warn_http:
             warnings.warn(
                 f"Using HTTP is not recommended for production: {url}",
-                SecurityWarning,
+                UserWarning,
                 stacklevel=2,
             )
 

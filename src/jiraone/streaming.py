@@ -276,7 +276,7 @@ class ChunkedExporter:
         self.delimiter = delimiter
 
         self._file: Optional[TextIO] = None
-        self._writer: Optional[csv.writer] = None
+        self._writer: Any = None
         self._rows_written = 0
         self._total_rows = 0
         self._file_count = 0
