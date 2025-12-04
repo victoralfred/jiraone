@@ -5,6 +5,7 @@
 This module provides reusable fixtures for testing jiraone components.
 """
 import pytest
+import responses
 from unittest.mock import Mock, MagicMock, patch
 from typing import Any, Dict, Generator
 
@@ -325,3 +326,147 @@ def retry_config():
         max_delay=1.0,
         exponential_base=2.0,
     )
+
+
+# =============================================================================
+# HTTP Mocking Fixtures (responses library)
+# =============================================================================
+
+@pytest.fixture
+def mocked_responses():
+    """Activate responses mocking for HTTP requests.
+
+    Usage::
+
+        def test_api_call(mocked_responses, base_url):
+            mocked_responses.add(
+                responses.GET,
+                f"{base_url}/rest/api/3/myself",
+                json={"accountId": "12345"},
+                status=200,
+            )
+            # Make API call - it will be mocked
+    """
+    with responses.RequestsMock(assert_all_requests_are_fired=False) as rsps:
+        yield rsps
+
+
+@pytest.fixture
+def mock_jira_myself(mocked_responses, base_url: str, sample_user_data: Dict[str, Any]):
+    """Mock the /myself endpoint."""
+    mocked_responses.add(
+        responses.GET,
+        f"{base_url}/rest/api/3/myself",
+        json=sample_user_data,
+        status=200,
+    )
+    return mocked_responses
+
+
+@pytest.fixture
+def mock_jira_project(
+    mocked_responses, base_url: str, project_key: str, sample_project_data: Dict[str, Any]
+):
+    """Mock the /project/{key} endpoint."""
+    mocked_responses.add(
+        responses.GET,
+        f"{base_url}/rest/api/3/project/{project_key}",
+        json=sample_project_data,
+        status=200,
+    )
+    return mocked_responses
+
+
+@pytest.fixture
+def mock_jira_issue(
+    mocked_responses, base_url: str, issue_key: str, sample_issue_data: Dict[str, Any]
+):
+    """Mock the /issue/{key} endpoint."""
+    mocked_responses.add(
+        responses.GET,
+        f"{base_url}/rest/api/3/issue/{issue_key}",
+        json=sample_issue_data,
+        status=200,
+    )
+    return mocked_responses
+
+
+@pytest.fixture
+def mock_jira_search(
+    mocked_responses, base_url: str, sample_issues_list: Dict[str, Any]
+):
+    """Mock the /search endpoint."""
+    mocked_responses.add(
+        responses.GET,
+        f"{base_url}/rest/api/3/search",
+        json=sample_issues_list,
+        status=200,
+    )
+    mocked_responses.add(
+        responses.POST,
+        f"{base_url}/rest/api/3/search",
+        json=sample_issues_list,
+        status=200,
+    )
+    return mocked_responses
+
+
+@pytest.fixture
+def mock_jira_fields(mocked_responses, base_url: str, sample_field_data: Dict[str, Any]):
+    """Mock the /field endpoint."""
+    mocked_responses.add(
+        responses.GET,
+        f"{base_url}/rest/api/3/field",
+        json=[sample_field_data],
+        status=200,
+    )
+    return mocked_responses
+
+
+@pytest.fixture
+def mock_jira_rate_limit(mocked_responses, base_url: str):
+    """Mock a rate-limited response (429)."""
+    mocked_responses.add(
+        responses.GET,
+        f"{base_url}/rest/api/3/myself",
+        json={"errorMessages": ["Rate limit exceeded"]},
+        status=429,
+        headers={"Retry-After": "60"},
+    )
+    return mocked_responses
+
+
+@pytest.fixture
+def mock_jira_unauthorized(mocked_responses, base_url: str):
+    """Mock an unauthorized response (401)."""
+    mocked_responses.add(
+        responses.GET,
+        f"{base_url}/rest/api/3/myself",
+        json={"errorMessages": ["Unauthorized"]},
+        status=401,
+    )
+    return mocked_responses
+
+
+@pytest.fixture
+def mock_jira_not_found(mocked_responses, base_url: str, issue_key: str):
+    """Mock a not found response (404)."""
+    mocked_responses.add(
+        responses.GET,
+        f"{base_url}/rest/api/3/issue/{issue_key}",
+        json={"errorMessages": ["Issue does not exist"]},
+        status=404,
+    )
+    return mocked_responses
+
+
+@pytest.fixture
+def mock_jira_server_error(mocked_responses, base_url: str):
+    """Mock a server error response (500)."""
+    mocked_responses.add(
+        responses.GET,
+        f"{base_url}/rest/api/3/myself",
+        json={"errorMessages": ["Internal server error"]},
+        status=500,
+    )
+    return mocked_responses
