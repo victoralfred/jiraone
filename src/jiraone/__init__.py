@@ -140,6 +140,18 @@ from jiraone.streaming import (
     streaming_download,
     stream_json_array,
 )
+from jiraone.endpoints import (
+    EndpointBuilder,
+    EndpointConfig,
+)
+from jiraone.fields import (
+    FIELD_TYPES,
+    FIELD_SEARCH_KEYS,
+    get_field_type,
+    get_search_key,
+    is_custom_field_id,
+    extract_custom_field_number,
+)
 
 __author__ = "Prince Nyeche"
 __version__ = "0.9.3"
@@ -206,4 +218,14 @@ __all__ = [
     "ChunkedExporter",
     "streaming_download",
     "stream_json_array",
+    # Endpoints (new API)
+    "EndpointBuilder",
+    "EndpointConfig",
+    # Fields (new API)
+    "FIELD_TYPES",
+    "FIELD_SEARCH_KEYS",
+    "get_field_type",
+    "get_search_key",
+    "is_custom_field_id",
+    "extract_custom_field_number",
 ]
